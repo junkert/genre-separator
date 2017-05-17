@@ -75,7 +75,7 @@ def parseArgs():
                              "--config",
                              dest="config",
                              metavar="config",
-                             help="ini configuration file for mysql-collector.")
+                             help="ini configuration file.")
     conf_parser.add_argument("-d",
                              "--dest-path",
                              dest="dest_path",
