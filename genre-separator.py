@@ -5,32 +5,24 @@ from pprint import pprint
 from shutil import copyfile
 from mutagen.easyid3 import EasyID3
 from mutagen.aiff import AIFF
-from subprocess import Popen, PIPE
 
 
 class Crawler(object):
     def __init__(self):
         pass
 
-    # Use the "find" program in a shell to get file list
-    def crawl(self, path):
-        find_cmd = ["find", path, "-type", "f", "-print"]
-        proc = Popen(find_cmd, stdout=PIPE)
-        (stdout, stderr) = proc.communicate()
-        files = str(stdout).splitlines()
-        return files
-
     # This is a slow version. Super inefficient
     def crawl_path(self, path):
         file_list = []
         for root, dirs, files in os.walk(path):
             for dir in dirs:
-                self.crawl(os.path.join(root, dir))
+                self.crawl_path(os.path.join(root, dir))
             for file in files:
                 if os.path.join(root, file) == root:
                     return
                 if os.path.isfile(os.path.join(root, file)):
                     file_list.append(os.path.join(root, file))
+        pprint(f"FILE_LIST: {file_list}")
         return file_list
 
 
@@ -42,22 +34,23 @@ class AudioFile():
         self.id3 = self.get_id3_tags()
 
     def get_id3_tags(self):
-        if ("aif" in os.path.basename(self.path) or
-            "mp3" in os.path.basename(self.path)):
+        if (".aif" in os.path.basename(self.path) or
+            ".mp3" in os.path.basename(self.path)):
             try:
-                if "aif" in os.path.basename(self.path):
+                if ".aif" in os.path.basename(self.path):
                     aiff = AIFF(self.path)
                     self.id3 = aiff.tags
-                    self.genre = str(aiff.tags['TCON']).encode('ascii)').\
-                        replace('\'', '')
-                else:
+                    self.genre = aiff.tags['TCON'].text[0].replace('/', '&')
+                    self.has_id3 = True
+                elif ".mp3" in os.path.basename(self.path):
                     self.id3 = EasyID3(self.path)
-                    self.genre = str(self.id3['genre'][0])
-                self.genre = self.genre.replace('/', '_')
-                self.has_id3 = True
+                    self.genre = str(self.id3['genre'][0]).replace('/', '&')
+                    self.has_id3 = True
+                else:
+                    self.has_id3 = False
 
             except Exception as e:
-                print(e)
+                print(e.__str__())
                 print("WARN: %s does not have an ID3 tag." % self.path)
                 self.has_id3 = False
         else:
@@ -96,21 +89,27 @@ def main(args):
 
     # Crawl the source path and build AudioFile objects
     crawler = Crawler()
-    file_paths = crawler.crawl(args.source_path)
+    unknown_path = os.path.join(args.dest_path, "UNKNOWN")
+    file_paths = crawler.crawl_path(args.source_path)
+
+    if not os.path.isdir(os.path.dirname(unknown_path)):
+        print(f"Creating directory for unknown ID3 tags: {os.path.dirname}")
+        os.mkdir(os.path.dirname(unknown_path))
     for p in file_paths:
         dest_path = None
         audio_file = AudioFile(p)
         try:
+            print(f"{audio_file.path}: {audio_file.genre}: {audio_file.has_id3}")
             if not audio_file.has_id3:
                 dest_path = os.path.join(args.dest_path, "UNKNOWN") +\
                             "/" + os.path.basename(p)
             else:
-                    dest_path = os.path.join(args.dest_path) + "/" + \
-                        audio_file.genre + "/" + os.path.basename(p)
+                dest_path = os.path.join(args.dest_path) + "/" + \
+                    audio_file.genre + "/" + os.path.basename(p)
         except Exception as e:
-                print("WARN: WTF IS GOING ON?!")
-                dest_path = os.path.join(args.dest_path, "UNKNOWN") + \
-                            "/" + os.path.basename(p)
+            print(f"EXCEPTION: {e.__str__()}")
+            dest_path = os.path.join(args.dest_path, "UNKNOWN") + \
+                        "/" + os.path.basename(p)
 
         print("==========================================")
         print("source: %s" % p)
